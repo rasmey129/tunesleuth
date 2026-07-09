@@ -1,0 +1,6 @@
+anthropic>=0.40
+openai>=1.30
+pandas>=2.0
+requests>=2.31
+streamlit>=1.35
+python-dotenv>=1.0

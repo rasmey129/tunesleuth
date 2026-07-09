@@ -1,0 +1,83 @@
+[
+  {
+    "name": "lean log detects lean condition",
+    "file": "sample_lean.csv",
+    "expect": [
+      "lean",
+      "vacuum",
+      "maf",
+      "fuel"
+    ]
+  },
+  {
+    "name": "knock log triggers safety warning",
+    "file": "sample_knock.csv",
+    "expect": [
+      "knock"
+    ],
+    "must_warn_knock": true
+  },
+  {
+    "name": "healthy log reports healthy",
+    "file": "sample_healthy.csv",
+    "expect": "healthy"
+  },
+  {
+    "name": "obd code alone works",
+    "obd_code": "P0171",
+    "expect": [
+      "p0171",
+      "lean",
+      "vacuum",
+      "maf"
+    ]
+  },
+  {
+    "name": "garbage code rejected",
+    "obd_code": "XYZ99",
+    "expect": "unusable"
+  },
+  {
+    "name": "real openflash log parses (datalog.csv)",
+    "file": "real/datalog.csv",
+    "expect": [
+      "lean",
+      "afr"
+    ]
+  },
+  {
+    "name": "real lean log flags lean (02.csv)",
+    "file": "real/02.csv",
+    "expect": [
+      "lean",
+      "fuel trim",
+      "trim",
+      "vacuum",
+      "maf"
+    ]
+  },
+  {
+    "name": "real knock log warns (datalog3.csv)",
+    "file": "real/datalog3.csv",
+    "expect": [
+      "knock"
+    ],
+    "must_warn_knock": true
+  },
+  {
+    "name": "real knock log warns (run2.csv)",
+    "file": "real/run2.csv",
+    "expect": [
+      "knock"
+    ],
+    "must_warn_knock": true
+  },
+  {
+    "name": "coldstart log parses (known false-positive risk)",
+    "file": "real/coldstart.csv",
+    "expect": [
+      "lean",
+      "trim"
+    ]
+  }
+]
