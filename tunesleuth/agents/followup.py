@@ -35,6 +35,8 @@ def build_context(result: dict) -> str:
         "diagnoses": result.get("diagnoses", []),
         "confidence": result.get("confidence"),
         "safety_warning": result.get("safety_warning"),
+        "sensor_warnings": result.get("sensor_warnings", []),
+        "warmup_note": result.get("warmup_note"),
     }, indent=1)
 
 

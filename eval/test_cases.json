@@ -1,83 +1,105 @@
 [
   {
     "name": "lean log detects lean condition",
+    "group": "synthetic",
     "file": "sample_lean.csv",
-    "expect": [
-      "lean",
-      "vacuum",
-      "maf",
-      "fuel"
-    ]
+    "expect": ["lean", "vacuum", "maf", "fuel"]
   },
   {
     "name": "knock log triggers safety warning",
+    "group": "synthetic",
     "file": "sample_knock.csv",
-    "expect": [
-      "knock"
-    ],
+    "expect": ["knock"],
     "must_warn_knock": true
   },
   {
     "name": "healthy log reports healthy",
+    "group": "synthetic",
     "file": "sample_healthy.csv",
     "expect": "healthy"
   },
   {
-    "name": "obd code alone works",
+    "name": "obd code alone works (P0171)",
+    "group": "obd-code",
     "obd_code": "P0171",
-    "expect": [
-      "p0171",
-      "lean",
-      "vacuum",
-      "maf"
-    ]
+    "expect": ["p0171", "lean", "vacuum", "maf"]
+  },
+  {
+    "name": "obd code decoded locally (P0300 misfire)",
+    "group": "obd-code",
+    "obd_code": "P0300",
+    "expect": ["misfire"]
+  },
+  {
+    "name": "obd code decoded locally (P0420 catalyst)",
+    "group": "obd-code",
+    "obd_code": "P0420",
+    "expect": ["catalyst"]
+  },
+  {
+    "name": "unlisted code gets SAE structural decode (P0733)",
+    "group": "obd-code",
+    "obd_code": "P0733",
+    "expect": ["transmission"]
   },
   {
     "name": "garbage code rejected",
+    "group": "rejection",
     "obd_code": "XYZ99",
     "expect": "unusable"
   },
   {
-    "name": "real openflash log parses (datalog.csv)",
-    "file": "real/datalog.csv",
-    "expect": [
-      "lean",
-      "afr"
-    ]
+    "name": "garbage csv rejected",
+    "group": "rejection",
+    "csv": "hello\nthis is not a datalog\n1,2",
+    "expect": "unusable"
   },
   {
-    "name": "real lean log flags lean (02.csv)",
+    "name": "real openflash log parses (datalog.csv)",
+    "group": "real-log",
+    "file": "real/datalog.csv",
+    "expect": ["lean", "afr"]
+  },
+  {
+    "name": "real lean log flags lean + pegged sensor (02.csv)",
+    "group": "real-log",
     "file": "real/02.csv",
-    "expect": [
-      "lean",
-      "fuel trim",
-      "trim",
-      "vacuum",
-      "maf"
-    ]
+    "expect": ["lean", "fuel trim", "trim", "vacuum", "maf"],
+    "must_warn_sensor": true
+  },
+  {
+    "name": "real lean log flags lean + pegged sensor (022.csv)",
+    "group": "real-log",
+    "file": "real/022.csv",
+    "expect": ["lean", "fuel trim", "trim", "vacuum", "maf"],
+    "must_warn_sensor": true
+  },
+  {
+    "name": "real knock log warns (datalog1.csv)",
+    "group": "real-log",
+    "file": "real/datalog1.csv",
+    "expect": ["knock"],
+    "must_warn_knock": true
   },
   {
     "name": "real knock log warns (datalog3.csv)",
+    "group": "real-log",
     "file": "real/datalog3.csv",
-    "expect": [
-      "knock"
-    ],
+    "expect": ["knock"],
     "must_warn_knock": true
   },
   {
     "name": "real knock log warns (run2.csv)",
+    "group": "real-log",
     "file": "real/run2.csv",
-    "expect": [
-      "knock"
-    ],
+    "expect": ["knock"],
     "must_warn_knock": true
   },
   {
-    "name": "coldstart log parses (known false-positive risk)",
+    "name": "coldstart suppressed as warmup, not lean (was false positive)",
+    "group": "real-log",
     "file": "real/coldstart.csv",
-    "expect": [
-      "lean",
-      "trim"
-    ]
+    "expect": "healthy",
+    "must_note_warmup": true
   }
 ]

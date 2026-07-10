@@ -36,6 +36,7 @@ def run(csv_text: str | None = None, obd_code: str | None = None,
     # 1. Parse
     report("parser", "reading input")
     parsed = parser.parse(csv_text=csv_text, obd_code=obd_code)
+    preview = parsed.pop("preview", None)  # chart data; keep the trace readable
     trace["parsed"] = parsed
     trace["steps"].append("parser")
     if not parsed["usable"]:
@@ -47,8 +48,15 @@ def run(csv_text: str | None = None, obd_code: str | None = None,
     trace["analysis"] = analysis
     trace["steps"].append("analyzer")
     if analysis.get("healthy"):
-        return {"ok": True, "healthy": True,
-                "message": "No anomalies detected. Trims, AFR, and knock all look normal.",
+        message = "No anomalies detected."
+        if analysis.get("warmup_note"):
+            message += " (Fueling checks were skipped: see the warmup note.)"
+        else:
+            message += " Trims, AFR, and knock all look normal."
+        return {"ok": True, "healthy": True, "message": message,
+                "sensor_warnings": parsed.get("sensor_warnings", []),
+                "warmup_note": analysis.get("warmup_note"),
+                "preview": preview,
                 "trace": trace, "vehicle": vehicle}
 
     # 3. Research
@@ -79,6 +87,9 @@ def run(csv_text: str | None = None, obd_code: str | None = None,
         "confidence": verdict["overall_confidence"],
         "critic_notes": verdict["notes"],
         "safety_warning": None,
+        "sensor_warnings": parsed.get("sensor_warnings", []),
+        "warmup_note": analysis.get("warmup_note"),
+        "preview": preview,
         "trace": trace,
         "vehicle": vehicle,
     }

@@ -14,7 +14,19 @@ SYSTEM = ("You write Google search queries for automotive diagnosis. Given an "
           '{"queries": ["..."]}.')
 
 
-def _detect_anomalies(parsed: dict) -> list[str]:
+# Below this oil/coolant temperature (F) the engine never reached operating
+# temperature, so trims and AFR include open-loop warmup enrichment and must
+# not be read as lean/rich faults. Warmed-up logs from the same car run
+# 183-212F; coldstart.csv peaks at 158F.
+WARMUP_TEMP_F = 170
+
+
+def _in_warmup(stats: dict) -> bool:
+    temp = stats.get("oil_temp") or stats.get("coolant")
+    return bool(temp and temp["max"] < WARMUP_TEMP_F)
+
+
+def _detect_anomalies(parsed: dict, suppress_fueling: bool = False) -> list[str]:
     anomalies = []
     stats = parsed.get("stats", {})
 
@@ -25,15 +37,16 @@ def _detect_anomalies(parsed: dict) -> list[str]:
         else:
             anomalies.append(f"OBD-II trouble code {parsed['obd_code']}")
 
-    ltft = stats.get("ltft")
-    if ltft and ltft["mean"] > 10:
-        anomalies.append(f"long-term fuel trim elevated (mean {ltft['mean']}%), engine running lean")
-    if ltft and ltft["mean"] < -10:
-        anomalies.append(f"long-term fuel trim negative (mean {ltft['mean']}%), engine running rich")
+    if not suppress_fueling:
+        ltft = stats.get("ltft")
+        if ltft and ltft["mean"] > 10:
+            anomalies.append(f"long-term fuel trim elevated (mean {ltft['mean']}%), engine running lean")
+        if ltft and ltft["mean"] < -10:
+            anomalies.append(f"long-term fuel trim negative (mean {ltft['mean']}%), engine running rich")
 
-    afr_high = stats.get("afr_above_4000rpm")
-    if afr_high and afr_high["mean"] > 13.5:
-        anomalies.append(f"AFR lean under load (mean {afr_high['mean']} above 4000 RPM)")
+        afr_high = stats.get("afr_above_4000rpm")
+        if afr_high and afr_high["mean"] > 13.5:
+            anomalies.append(f"AFR lean under load (mean {afr_high['mean']} above 4000 RPM)")
 
     knock = stats.get("knock_events", 0)
     if knock > 0:
@@ -43,13 +56,24 @@ def _detect_anomalies(parsed: dict) -> list[str]:
 
 
 def analyze(parsed: dict, vehicle: str | None = None) -> dict:
-    """Return {anomalies, knock_detected, queries}."""
-    anomalies = _detect_anomalies(parsed)
-    knock_detected = parsed.get("stats", {}).get("knock_events", 0) > 0
+    """Return {anomalies, knock_detected, queries, warmup_note}."""
+    stats = parsed.get("stats", {})
+    warmup = _in_warmup(stats)
+    anomalies = _detect_anomalies(parsed, suppress_fueling=warmup)
+    knock_detected = stats.get("knock_events", 0) > 0
+
+    warmup_note = None
+    if warmup:
+        temp = stats.get("oil_temp") or stats.get("coolant")
+        warmup_note = (
+            f"The engine never reached operating temperature in this log "
+            f"(oil/coolant peaked at {temp['max']}F). Fuel trims and AFR during "
+            "warmup include open-loop enrichment, so lean/rich checks were "
+            "skipped. Re-log once warm to evaluate fueling.")
 
     if not anomalies:
         return {"anomalies": [], "knock_detected": False, "queries": [],
-                "healthy": True}
+                "healthy": True, "warmup_note": warmup_note}
 
     # Heuristic fallback queries built from the anomaly text
     vehicle_suffix = f" {vehicle}" if vehicle else ""
@@ -63,4 +87,5 @@ def analyze(parsed: dict, vehicle: str | None = None) -> dict:
     payload = llm.complete_json(SYSTEM, user, tag="queries")
     queries = payload.get("queries") or fallback
     return {"anomalies": anomalies, "knock_detected": knock_detected,
-            "queries": queries[: config.MAX_SEARCHES_PER_RUN], "healthy": False}
+            "queries": queries[: config.MAX_SEARCHES_PER_RUN], "healthy": False,
+            "warmup_note": warmup_note}

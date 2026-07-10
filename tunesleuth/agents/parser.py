@@ -17,6 +17,7 @@ from .. import obd_codes
 # Channel names we recognize, mapped from the many aliases logging tools use.
 # Order within a list matters: earlier aliases are preferred.
 CHANNEL_ALIASES = {
+    "time": ["time (s)", "time[s]", "time"],
     "rpm": ["rpm", "engine speed"],
     "afr": ["wideband afr", "air fuel ratio", "afr", "a/f ratio"],
     "afr_target": ["command afr", "commanded afr", "afr target", "target afr", "eq target"],
@@ -27,6 +28,7 @@ CHANNEL_ALIASES = {
     "timing": ["ignition adv", "ignition timing", "spark advance", "ign timing", "timing"],
     "knock": ["flkc", "fbkc", "knock retard", "knock feedback", "knock count", "knock"],
     "iat": ["intake air temp", "intake temp", "manifold air temp", "iat"],
+    "coolant": ["coolant temp", "engine coolant", "ect"],
     "throttle": ["throttle", "tps", "accelerator"],
     "oil_temp": ["oil temp"],
 }
@@ -61,19 +63,31 @@ def _find_header_row(lines: list[str]) -> int:
     return 0
 
 
+def _channel_candidates(df: pd.DataFrame, channel: str) -> list[str]:
+    """All columns that could serve a channel, in alias-priority order."""
+    lowered = {c.lower().strip(): c for c in df.columns}
+    candidates = []
+    for alias in CHANNEL_ALIASES[channel]:  # alias priority order
+        for col_lower, col in lowered.items():
+            if alias in col_lower and col not in candidates:
+                if any(bad in col_lower for bad in EXCLUDE.get(channel, [])):
+                    continue
+                candidates.append(col)
+    return candidates
+
+
 def _match_columns(df: pd.DataFrame) -> dict:
     mapping = {}
-    lowered = {c.lower().strip(): c for c in df.columns}
-    for channel, aliases in CHANNEL_ALIASES.items():
-        for alias in aliases:  # alias priority order
-            for col_lower, col in lowered.items():
-                if alias in col_lower and channel not in mapping:
-                    if any(bad in col_lower for bad in EXCLUDE.get(channel, [])):
-                        continue
-                    mapping[channel] = col
-            if channel in mapping:
-                break
+    for channel in CHANNEL_ALIASES:
+        candidates = _channel_candidates(df, channel)
+        if candidates:
+            mapping[channel] = candidates[0]
     return mapping
+
+
+def _is_flat(series: pd.Series) -> bool:
+    """A sensor that never moves over a real log is pegged or disconnected."""
+    return len(series) >= 20 and float(series.max() - series.min()) < 0.2
 
 
 def parse(csv_text: str | None = None, obd_code: str | None = None) -> dict:
@@ -82,7 +96,8 @@ def parse(csv_text: str | None = None, obd_code: str | None = None) -> dict:
     Never raises on bad data; sets `usable` to False with a reason instead.
     """
     result = {"usable": False, "reason": "", "obd_code": None, "obd_meaning": None,
-              "channels": {}, "stats": {}, "rows": 0, "format": "csv"}
+              "channels": {}, "stats": {}, "rows": 0, "format": "csv",
+              "sensor_warnings": []}
 
     if obd_code:
         code = obd_code.strip().upper()
@@ -125,6 +140,8 @@ def parse(csv_text: str | None = None, obd_code: str | None = None) -> dict:
 
     stats = {}
     for channel, col in mapping.items():
+        if channel == "time":  # an axis, not a measurement
+            continue
         series = pd.to_numeric(df[col], errors="coerce").dropna()
         if series.empty:
             continue
@@ -137,6 +154,41 @@ def parse(csv_text: str | None = None, obd_code: str | None = None) -> dict:
     if not stats:
         result["reason"] = "Recognized columns contained no numeric data."
         return result
+
+    # Sensor sanity: a wideband that reads one flat value all log is pegged
+    # or disconnected (02.csv reads a constant 18.0). Fall back to the next
+    # AFR-capable column if a live one exists; otherwise drop the channel
+    # rather than diagnose off a dead sensor.
+    if "afr" in mapping:
+        afr_series = pd.to_numeric(df[mapping["afr"]], errors="coerce").dropna()
+        if _is_flat(afr_series):
+            dead_col = mapping["afr"]
+            flat_value = round(float(afr_series.mean()), 1)
+            replacement = None
+            for cand in _channel_candidates(df, "afr"):
+                if cand == dead_col:
+                    continue
+                cand_series = pd.to_numeric(df[cand], errors="coerce").dropna()
+                if not cand_series.empty and not _is_flat(cand_series):
+                    replacement = cand
+                    break
+            if replacement:
+                mapping["afr"] = replacement
+                series = pd.to_numeric(df[replacement], errors="coerce").dropna()
+                stats["afr"] = {"mean": round(float(series.mean()), 2),
+                                "min": round(float(series.min()), 2),
+                                "max": round(float(series.max()), 2)}
+                result["sensor_warnings"].append(
+                    f"AFR column '{dead_col}' reads a flat {flat_value} for the "
+                    f"entire log — sensor likely pegged or disconnected. Using "
+                    f"'{replacement}' instead.")
+            else:
+                mapping.pop("afr")
+                stats.pop("afr", None)
+                result["sensor_warnings"].append(
+                    f"AFR column '{dead_col}' reads a flat {flat_value} for the "
+                    "entire log — sensor likely pegged or disconnected. AFR was "
+                    "excluded from analysis.")
 
     # Derived stats the Analyzer relies on
     if "afr" in mapping and "rpm" in mapping:
@@ -163,6 +215,31 @@ def parse(csv_text: str | None = None, obd_code: str | None = None) -> dict:
         if stats["knock_events"]:
             stats["knock_worst"] = round(float(knock.abs().max()), 2)
 
+    result["preview"] = _build_preview(df, mapping)
     result.update({"usable": True, "channels": mapping, "stats": stats,
                    "rows": len(df)})
     return result
+
+
+PREVIEW_CHANNELS = ("rpm", "afr", "ltft", "knock")
+MAX_PREVIEW_POINTS = 240
+
+
+def _build_preview(df: pd.DataFrame, mapping: dict) -> dict:
+    """Downsampled time series of the headline channels, for the UI chart."""
+    step = max(1, len(df) // MAX_PREVIEW_POINTS)
+    idx = df.index[::step]
+
+    def col_values(col):
+        s = pd.to_numeric(df[col], errors="coerce").loc[idx]
+        return [round(float(v), 2) if pd.notna(v) else None for v in s]
+
+    channels = {}
+    if "time" in mapping:
+        channels["time"] = col_values(mapping["time"])
+    else:
+        channels["time"] = list(range(len(idx)))
+    for ch in PREVIEW_CHANNELS:
+        if ch in mapping:
+            channels[ch] = col_values(mapping[ch])
+    return {"channels": channels, "time_is_seconds": "time" in mapping}
