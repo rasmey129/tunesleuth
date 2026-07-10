@@ -169,8 +169,9 @@ if result is not None:
 
         st.divider()
         st.subheader("Ask about this diagnosis")
-        st.caption("Grounded strictly in the diagnosis above — it won't run new "
-                   "searches or speculate beyond this evidence.")
+        st.caption("Grounded in the diagnosis above. Ask about potential causes — "
+                   "it will look up whether other owners have seen the same issue "
+                   "and report the consensus, without inventing log readings.")
 
         for msg in st.session_state.get("chat_history", []):
             with st.chat_message(msg["role"]):

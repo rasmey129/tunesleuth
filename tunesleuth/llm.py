@@ -27,11 +27,20 @@ _MOCK_RESPONSES = {
         "notes": "Both claims trace to log statistics and a cited source.",
         "overall_confidence": "medium"
     }),
-    "followup": ("Based on this diagnosis: LTFT was elevated at idle and normalized "
-                 "under load, which points to unmetered air entering after the MAF "
-                 "sensor rather than a fuel delivery problem. That's why a vacuum "
-                 "leak outranks a dirty MAF here. (This is a mock response — set "
-                 "an API key for live follow-up chat.)"),
+    "chat_queries": json.dumps({
+        "queries": ["2017 Toyota 86 intake manifold leak lean fuel trims",
+                    "FA20 high LTFT vacuum leak owners"]
+    }),
+    "followup": ("Plausible, yes. An intake/manifold leak admits unmetered air, "
+                 "which the ECU compensates for with positive fuel trims — and "
+                 "this log's elevated LTFT is consistent with that mechanism. "
+                 "Owner reports agree: across the threads found, the most "
+                 "common confirmed fix for high trims like these was a "
+                 "vacuum/intake leak, with MAF cleaning a distant second "
+                 "(mock://forum-thread-1, mock://forum-thread-2). The log "
+                 "can't confirm the leak's location; a smoke test of the "
+                 "intake tract is the usual way to find it. (This is a mock "
+                 "response — set an API key for live follow-up chat.)"),
 }
 
 

@@ -27,3 +27,4 @@ MOCK_MODE = (os.getenv("TUNESLEUTH_MOCK", "").lower() in ("1", "true")
 MAX_SEARCHES_PER_RUN = 3
 MAX_PAGES_FETCHED = 3
 MAX_CRITIC_REVISIONS = 1
+MAX_CHAT_SEARCHES = 2    # per follow-up question
