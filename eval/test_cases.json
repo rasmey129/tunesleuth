@@ -19,6 +19,18 @@
     "expect": "healthy"
   },
   {
+    "name": "rich log detects rich condition",
+    "group": "synthetic",
+    "file": "sample_rich.csv",
+    "expect": ["rich", "over-fueling"]
+  },
+  {
+    "name": "overheating log detects oil temp and heat soak",
+    "group": "synthetic",
+    "file": "sample_overheat.csv",
+    "expect": ["overheating", "heat soak"]
+  },
+  {
     "name": "obd code alone works (P0171)",
     "group": "obd-code",
     "obd_code": "P0171",
@@ -73,6 +85,12 @@
     "file": "real/022.csv",
     "expect": ["lean", "fuel trim", "trim", "vacuum", "maf"],
     "must_warn_sensor": true
+  },
+  {
+    "name": "real lean log flags lean (datalog2.csv)",
+    "group": "real-log",
+    "file": "real/datalog2.csv",
+    "expect": ["lean", "trim"]
   },
   {
     "name": "real knock log warns (datalog1.csv)",
