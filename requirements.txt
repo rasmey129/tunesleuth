@@ -1,6 +1,10 @@
+altair>=5
 anthropic>=0.40
 openai>=1.30
-pandas>=2.0
+# pandas 3 defaults to pyarrow-backed strings, which segfault inside
+# Streamlit's script-runner thread on macOS (crash in string_arrow
+# _from_sequence during read_csv). Pin to 2.x until that's fixed upstream.
+pandas>=2.0,<3
 requests>=2.31
 streamlit>=1.35
 python-dotenv>=1.0
