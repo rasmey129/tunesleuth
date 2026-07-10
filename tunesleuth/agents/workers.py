@@ -30,13 +30,16 @@ SYNTH_SYSTEM = (
     "You are an automotive diagnostic assistant. Combine the datalog statistics "
     "with the web evidence into a ranked list of probable causes. Every cause "
     "must cite either a specific log statistic or one of the provided source "
-    "links. Do not invent causes the evidence does not support. Return JSON: "
+    "links. Do not invent causes the evidence does not support. If a vehicle "
+    "is given, prefer causes and evidence specific to that vehicle when the "
+    "sources support it, but never invent a vehicle-specific claim the "
+    "evidence doesn't back. Return JSON: "
     '{"diagnoses": [{"cause", "confidence" (high/medium/low), "evidence", "source"}]}'
 )
 
 
 def synthesize(parsed: dict, analysis: dict, evidence: list[dict],
-               critic_notes: str = "") -> list[dict]:
+               critic_notes: str = "", vehicle: str | None = None) -> list[dict]:
     user = (
         "Datalog stats: " + json.dumps(parsed.get("stats", {})) + "\n"
         "OBD code: " + str(parsed.get("obd_code")) + "\n"
@@ -44,6 +47,8 @@ def synthesize(parsed: dict, analysis: dict, evidence: list[dict],
         "Web evidence: " + json.dumps(
             [{k: e[k] for k in ("title", "link", "snippet")} for e in evidence]) + "\n"
     )
+    if vehicle:
+        user += f"Vehicle: {vehicle}\n"
     if critic_notes:
         user += f"\nA reviewer rejected the previous draft: {critic_notes}\nRevise accordingly."
     payload = llm.complete_json(SYNTH_SYSTEM, user, tag="synthesis")

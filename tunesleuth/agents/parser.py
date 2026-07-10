@@ -12,6 +12,8 @@ import io
 import re
 import pandas as pd
 
+from .. import obd_codes
+
 # Channel names we recognize, mapped from the many aliases logging tools use.
 # Order within a list matters: earlier aliases are preferred.
 CHANNEL_ALIASES = {
@@ -79,13 +81,14 @@ def parse(csv_text: str | None = None, obd_code: str | None = None) -> dict:
 
     Never raises on bad data; sets `usable` to False with a reason instead.
     """
-    result = {"usable": False, "reason": "", "obd_code": None,
+    result = {"usable": False, "reason": "", "obd_code": None, "obd_meaning": None,
               "channels": {}, "stats": {}, "rows": 0, "format": "csv"}
 
     if obd_code:
         code = obd_code.strip().upper()
         if OBD_CODE_RE.match(code):
             result["obd_code"] = code
+            result["obd_meaning"] = obd_codes.decode(code)
         else:
             result["reason"] = f"'{obd_code}' does not look like an OBD-II code (e.g. P0171)."
             if not csv_text:

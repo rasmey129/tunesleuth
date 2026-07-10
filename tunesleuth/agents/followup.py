@@ -27,8 +27,10 @@ def build_context(result: dict) -> str:
     """Distill a pipeline result into the context block the chat runs on."""
     parsed = result.get("trace", {}).get("parsed", {})
     return json.dumps({
+        "vehicle": result.get("vehicle"),
         "stats": parsed.get("stats", {}),
         "obd_code": parsed.get("obd_code"),
+        "obd_meaning": parsed.get("obd_meaning"),
         "anomalies": result.get("anomalies", []),
         "diagnoses": result.get("diagnoses", []),
         "confidence": result.get("confidence"),

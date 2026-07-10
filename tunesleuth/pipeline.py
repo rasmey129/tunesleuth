@@ -18,8 +18,15 @@ KNOCK_WARNING = (
 
 
 def run(csv_text: str | None = None, obd_code: str | None = None,
-        progress=None) -> dict:
-    """Run the full diagnosis. `progress` is an optional callback(step, detail)."""
+        vehicle: str | None = None, progress=None) -> dict:
+    """Run the full diagnosis. `progress` is an optional callback(step, detail).
+
+    `vehicle` is an optional free-text description (year/make/model/engine/
+    mods) that threads through query generation, synthesis, and follow-up
+    chat so diagnoses can be model-specific. Everything works without it.
+    """
+    vehicle = vehicle.strip() if vehicle else None
+
     def report(step, detail=""):
         if progress:
             progress(step, detail)
@@ -36,13 +43,13 @@ def run(csv_text: str | None = None, obd_code: str | None = None,
 
     # 2. Analyze
     report("analyzer", "detecting anomalies")
-    analysis = analyzer.analyze(parsed)
+    analysis = analyzer.analyze(parsed, vehicle=vehicle)
     trace["analysis"] = analysis
     trace["steps"].append("analyzer")
     if analysis.get("healthy"):
         return {"ok": True, "healthy": True,
                 "message": "No anomalies detected. Trims, AFR, and knock all look normal.",
-                "trace": trace}
+                "trace": trace, "vehicle": vehicle}
 
     # 3. Research
     report("researcher", f"searching: {analysis['queries']}")
@@ -55,7 +62,7 @@ def run(csv_text: str | None = None, obd_code: str | None = None,
     diagnoses, verdict = [], {}
     for attempt in range(config.MAX_CRITIC_REVISIONS + 1):
         report("synthesizer", f"attempt {attempt + 1}")
-        diagnoses = workers.synthesize(parsed, analysis, evidence, critic_notes)
+        diagnoses = workers.synthesize(parsed, analysis, evidence, critic_notes, vehicle=vehicle)
         report("critic", "verifying claims")
         verdict = workers.critique(parsed, diagnoses, evidence)
         trace["steps"].append(f"synthesizer/critic pass {attempt + 1}")
@@ -73,6 +80,7 @@ def run(csv_text: str | None = None, obd_code: str | None = None,
         "critic_notes": verdict["notes"],
         "safety_warning": None,
         "trace": trace,
+        "vehicle": vehicle,
     }
 
     # Hard safety rule: knock always escalates, no exceptions.

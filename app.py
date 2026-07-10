@@ -1,6 +1,7 @@
 """TuneSleuth front-end. Run with: streamlit run app.py"""
 import streamlit as st
 from tunesleuth import pipeline, config
+from tunesleuth.agents import followup
 
 st.set_page_config(page_title="TuneSleuth", page_icon=None, layout="centered")
 st.title("TuneSleuth")
@@ -16,6 +17,9 @@ with col1:
 with col2:
     obd_code = st.text_input("Or enter an OBD-II code", placeholder="P0171")
 
+vehicle = st.text_input("Vehicle (optional)",
+                        placeholder="e.g. 2017 Toyota 86, FA20, OpenFlash Stage 2")
+
 if st.button("Diagnose", type="primary"):
     if not uploaded and not obd_code:
         st.warning("Give me a datalog or a trouble code first.")
@@ -23,40 +27,66 @@ if st.button("Diagnose", type="primary"):
 
     csv_text = uploaded.getvalue().decode("utf-8", errors="replace") if uploaded else None
     steps_box = st.container()
-    step_log = []
 
     def progress(step, detail):
-        step_log.append((step, detail))
         with steps_box:
             st.write(f"**{step}** — {detail}")
 
     with st.spinner("Agents working..."):
         result = pipeline.run(csv_text=csv_text, obd_code=obd_code or None,
-                              progress=progress)
+                              vehicle=vehicle or None, progress=progress)
 
+    st.session_state["result"] = result
+    st.session_state["chat_history"] = []
+
+result = st.session_state.get("result")
+if result is not None:
     st.divider()
     if not result["ok"]:
         st.error(result["message"])
-        st.stop()
-
-    if result.get("safety_warning"):
-        st.error(result["safety_warning"])
-
-    if result.get("healthy"):
-        st.success(result["message"])
     else:
-        st.subheader("What the log shows")
-        for a in result["anomalies"]:
-            st.write("- " + a)
+        if result.get("safety_warning"):
+            st.error(result["safety_warning"])
 
-        st.subheader(f"Probable causes (overall confidence: {result['confidence']})")
-        for i, d in enumerate(result["diagnoses"], 1):
-            with st.expander(f"{i}. {d.get('cause', '?')} ({d.get('confidence', '?')})"):
-                st.write(d.get("evidence", ""))
-                if d.get("source"):
-                    st.write(f"Source: {d['source']}")
-        if result.get("critic_notes"):
-            st.caption(f"Critic notes: {result['critic_notes']}")
+        if result.get("healthy"):
+            st.success(result["message"])
+        else:
+            st.subheader("What the log shows")
+            for a in result["anomalies"]:
+                st.write("- " + a)
 
-    with st.expander("Full agent trace"):
-        st.json(result["trace"])
+            st.subheader(f"Probable causes (overall confidence: {result['confidence']})")
+            for i, d in enumerate(result["diagnoses"], 1):
+                with st.expander(f"{i}. {d.get('cause', '?')} ({d.get('confidence', '?')})"):
+                    st.write(d.get("evidence", ""))
+                    if d.get("source"):
+                        st.write(f"Source: {d['source']}")
+            if result.get("critic_notes"):
+                st.caption(f"Critic notes: {result['critic_notes']}")
+
+        with st.expander("Full agent trace"):
+            st.json(result["trace"])
+
+        st.divider()
+        st.subheader("Ask about this diagnosis")
+        st.caption("Grounded strictly in the diagnosis above — it won't run new "
+                   "searches or speculate beyond this evidence.")
+
+        for msg in st.session_state.get("chat_history", []):
+            with st.chat_message(msg["role"]):
+                st.write(msg["content"])
+
+        question = st.chat_input("e.g. Is it safe to keep driving?")
+        if question:
+            history = st.session_state.setdefault("chat_history", [])
+            history.append({"role": "user", "content": question})
+            with st.chat_message("user"):
+                st.write(question)
+
+            context = followup.build_context(result)
+            with st.spinner("Thinking..."):
+                answer = followup.answer(context, history[:-1], question)
+
+            history.append({"role": "assistant", "content": answer})
+            with st.chat_message("assistant"):
+                st.write(answer)

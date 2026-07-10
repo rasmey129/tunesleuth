@@ -27,6 +27,11 @@ _MOCK_RESPONSES = {
         "notes": "Both claims trace to log statistics and a cited source.",
         "overall_confidence": "medium"
     }),
+    "followup": ("Based on this diagnosis: LTFT was elevated at idle and normalized "
+                 "under load, which points to unmetered air entering after the MAF "
+                 "sensor rather than a fuel delivery problem. That's why a vacuum "
+                 "leak outranks a dirty MAF here. (This is a mock response — set "
+                 "an API key for live follow-up chat.)"),
 }
 
 

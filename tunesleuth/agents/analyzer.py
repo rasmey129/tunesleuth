@@ -9,7 +9,9 @@ from .. import config, llm
 
 SYSTEM = ("You write Google search queries for automotive diagnosis. Given an "
           "anomaly summary, produce 2-3 short queries an experienced mechanic "
-          "would type. Return JSON: {\"queries\": [\"...\"]}.")
+          "would type. If a vehicle is given, work its year/make/model/engine "
+          "into the queries so results are model-specific. Return JSON: "
+          '{"queries": ["..."]}.')
 
 
 def _detect_anomalies(parsed: dict) -> list[str]:
@@ -17,7 +19,11 @@ def _detect_anomalies(parsed: dict) -> list[str]:
     stats = parsed.get("stats", {})
 
     if parsed.get("obd_code"):
-        anomalies.append(f"OBD-II trouble code {parsed['obd_code']}")
+        meaning = parsed.get("obd_meaning")
+        if meaning:
+            anomalies.append(f"OBD-II trouble code {parsed['obd_code']} ({meaning})")
+        else:
+            anomalies.append(f"OBD-II trouble code {parsed['obd_code']}")
 
     ltft = stats.get("ltft")
     if ltft and ltft["mean"] > 10:
@@ -36,7 +42,7 @@ def _detect_anomalies(parsed: dict) -> list[str]:
     return anomalies
 
 
-def analyze(parsed: dict) -> dict:
+def analyze(parsed: dict, vehicle: str | None = None) -> dict:
     """Return {anomalies, knock_detected, queries}."""
     anomalies = _detect_anomalies(parsed)
     knock_detected = parsed.get("stats", {}).get("knock_events", 0) > 0
@@ -46,14 +52,15 @@ def analyze(parsed: dict) -> dict:
                 "healthy": True}
 
     # Heuristic fallback queries built from the anomaly text
-    fallback = [a + " causes" for a in anomalies[:2]]
+    vehicle_suffix = f" {vehicle}" if vehicle else ""
+    fallback = [a + " causes" + vehicle_suffix for a in anomalies[:2]]
 
-    payload = llm.complete_json(
-        SYSTEM,
-        "Anomalies found in the datalog:\n" + "\n".join(f"- {a}" for a in anomalies)
-        + "\nStats: " + json.dumps(parsed.get("stats", {})),
-        tag="queries",
-    )
+    user = ("Anomalies found in the datalog:\n" + "\n".join(f"- {a}" for a in anomalies)
+            + "\nStats: " + json.dumps(parsed.get("stats", {})))
+    if vehicle:
+        user += f"\nVehicle: {vehicle}"
+
+    payload = llm.complete_json(SYSTEM, user, tag="queries")
     queries = payload.get("queries") or fallback
     return {"anomalies": anomalies, "knock_detected": knock_detected,
             "queries": queries[: config.MAX_SEARCHES_PER_RUN], "healthy": False}
