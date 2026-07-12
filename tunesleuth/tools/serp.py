@@ -36,6 +36,8 @@ def search(query: str, num: int = 5) -> list[dict]:
     organic = resp.json().get("organic", [])
     results = [{"title": r.get("title", ""), "link": r.get("link", ""),
                 "snippet": r.get("snippet", "")} for r in organic[:num]]
+    if len(_cache) > 256:  # long-running server: don't grow forever
+        _cache.clear()
     _cache[query] = results
     return results
 

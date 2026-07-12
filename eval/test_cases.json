@@ -28,19 +28,36 @@
     "name": "overheating log detects oil temp and heat soak",
     "group": "synthetic",
     "file": "sample_overheat.csv",
-    "expect": ["overheating", "heat soak"]
+    "expect": ["overheating", "heat soak"],
+    "must_severity": "stop"
   },
   {
     "name": "obd code alone works (P0171)",
     "group": "obd-code",
     "obd_code": "P0171",
-    "expect": ["p0171", "lean", "vacuum", "maf"]
+    "expect": ["p0171", "lean", "vacuum", "maf"],
+    "must_severity": "caution"
   },
   {
     "name": "obd code decoded locally (P0300 misfire)",
     "group": "obd-code",
     "obd_code": "P0300",
-    "expect": ["misfire"]
+    "expect": ["misfire"],
+    "must_severity": "stop"
+  },
+  {
+    "name": "multiple codes parsed, worst severity wins (P0171 + P0300)",
+    "group": "obd-code",
+    "obd_code": "P0171, P0300",
+    "expect": ["misfire"],
+    "must_severity": "stop"
+  },
+  {
+    "name": "gas cap code is low urgency (P0455)",
+    "group": "obd-code",
+    "obd_code": "P0455",
+    "expect": ["leak"],
+    "must_severity": "low"
   },
   {
     "name": "obd code decoded locally (P0420 catalyst)",
@@ -104,7 +121,8 @@
     "group": "real-log",
     "file": "real/datalog3.csv",
     "expect": ["knock"],
-    "must_warn_knock": true
+    "must_warn_knock": true,
+    "must_severity": "caution"
   },
   {
     "name": "real knock log warns (run2.csv)",

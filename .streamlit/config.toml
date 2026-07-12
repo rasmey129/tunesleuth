@@ -1,0 +1,6 @@
+[server]
+# Datalogs are small; a 25 MB cap keeps oversized uploads from tying up the app.
+maxUploadSize = 25
+
+[browser]
+gatherUsageStats = false

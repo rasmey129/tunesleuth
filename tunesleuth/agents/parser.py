@@ -1,12 +1,15 @@
 """Agent 1: Input Parser.
 
-Deterministic (no LLM). Reads a datalog CSV and/or an OBD-II code, validates
-the columns, computes summary statistics, and reports unusable data instead
+Deterministic (no LLM). Reads a datalog CSV and/or OBD-II trouble codes
+(one or several — real scans usually return several), validates the
+columns, computes summary statistics, and reports unusable data instead
 of guessing.
 
-Handles plain CSVs and OpenFlash Tablet exports, which prepend a preamble
-("Procede Data Log" / "OpenFlash Data File 1" / channel count) before the
-real header row.
+Handles plain CSVs, OpenFlash Tablet exports (which prepend a preamble —
+"Procede Data Log" / "OpenFlash Data File 1" / channel count — before the
+real header row), consumer OBD app exports (Torque, OBD Fusion, Car
+Scanner — covered by the channel aliases), and single-row freeze-frame
+snapshots.
 """
 import io
 import re
@@ -31,10 +34,12 @@ CHANNEL_ALIASES = {
     "coolant": ["coolant temp", "engine coolant", "ect"],
     "throttle": ["throttle", "tps", "accelerator"],
     "oil_temp": ["oil temp"],
+    "speed": ["vehicle speed", "speed (obd)", "speed"],
 }
 
-# Columns that must never satisfy these channels (voltage is not a flow rate)
-EXCLUDE = {"maf": ["volt"], "afr": ["sensor v", "volt"]}
+# Columns that must never satisfy these channels (voltage is not a flow
+# rate; engine speed is not vehicle speed)
+EXCLUDE = {"maf": ["volt"], "afr": ["sensor v", "volt"], "speed": ["engine", "rpm"]}
 
 OBD_CODE_RE = re.compile(r"^[PBCU]\d{4}$", re.IGNORECASE)
 
@@ -96,21 +101,36 @@ def parse(csv_text: str | None = None, obd_code: str | None = None) -> dict:
     Never raises on bad data; sets `usable` to False with a reason instead.
     """
     result = {"usable": False, "reason": "", "obd_code": None, "obd_meaning": None,
-              "channels": {}, "stats": {}, "rows": 0, "format": "csv",
-              "sensor_warnings": []}
+              "obd_codes": [], "channels": {}, "stats": {}, "rows": 0,
+              "format": "csv", "sensor_warnings": [], "notes": []}
 
     if obd_code:
-        code = obd_code.strip().upper()
-        if OBD_CODE_RE.match(code):
-            result["obd_code"] = code
-            result["obd_meaning"] = obd_codes.decode(code)
+        tokens = [t for t in re.split(r"[,;\s/]+", obd_code.strip()) if t]
+        invalid = []
+        for token in tokens:
+            code = token.upper()
+            if OBD_CODE_RE.match(code):
+                if code not in [c["code"] for c in result["obd_codes"]]:
+                    result["obd_codes"].append(
+                        {"code": code, "meaning": obd_codes.decode(code)})
+            else:
+                invalid.append(token)
+        if result["obd_codes"]:
+            # Back-compat keys: first code
+            result["obd_code"] = result["obd_codes"][0]["code"]
+            result["obd_meaning"] = result["obd_codes"][0]["meaning"]
+            if invalid:
+                result["notes"].append(
+                    "Ignored input that doesn't look like an OBD-II code: "
+                    + ", ".join(invalid))
         else:
-            result["reason"] = f"'{obd_code}' does not look like an OBD-II code (e.g. P0171)."
+            result["reason"] = (f"'{obd_code}' does not look like an OBD-II "
+                                "code (e.g. P0171, or several: P0171, P0300).")
             if not csv_text:
                 return result
 
     if not csv_text:
-        result["usable"] = result["obd_code"] is not None
+        result["usable"] = bool(result["obd_codes"])
         if not result["usable"] and not result["reason"]:
             result["reason"] = "No datalog or trouble code provided."
         return result
@@ -131,6 +151,15 @@ def parse(csv_text: str | None = None, obd_code: str | None = None) -> dict:
     if df.empty or len(df.columns) < 2:
         result["reason"] = "CSV is empty or has too few columns to analyze."
         return result
+
+    # A single data row is a freeze-frame snapshot (the sensor values from
+    # the moment a trouble code set), not a drive log. Stats still work
+    # (mean == the single value); flag it so downstream can say so.
+    if len(df) == 1:
+        result["format"] = "freeze-frame"
+        result["notes"].append(
+            "This looks like a freeze-frame snapshot (one row), not a drive "
+            "log — the values are from the moment the code set.")
 
     mapping = _match_columns(df)
     if not mapping:

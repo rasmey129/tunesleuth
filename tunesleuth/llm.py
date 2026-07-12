@@ -4,7 +4,18 @@ Supports Anthropic and OpenAI. Set LLM_PROVIDER=openai or anthropic in .env;
 if unset, whichever API key is present decides.
 """
 import json
+import logging
+
 from . import config
+
+log = logging.getLogger("tunesleuth")
+
+
+class LLMUnavailableError(RuntimeError):
+    """The LLM provider could not be reached or refused the request.
+
+    The message is written for end users; the pipeline surfaces it verbatim.
+    """
 
 _MOCK_RESPONSES = {
     "queries": json.dumps({
@@ -14,10 +25,25 @@ _MOCK_RESPONSES = {
         "diagnoses": [
             {"cause": "Vacuum leak after the MAF sensor", "confidence": "high",
              "evidence": "LTFT elevated at idle but normalizes under load, classic unmetered-air signature.",
-             "source": "mock://forum-thread-1"},
+             "source": "mock://forum-thread-1",
+             "check": "With the engine idling, listen for hissing and spray "
+                      "soapy water on intake joints — bubbles or an RPM "
+                      "change mark the leak.",
+             "cost": "$0-40 DIY (hose or clamp); $80-150 for a shop smoke test",
+             "difficulty": "diy-easy"},
             {"cause": "Dirty or failing MAF sensor", "confidence": "medium",
              "evidence": "MAF g/s slightly under expected for displacement at idle.",
-             "source": "mock://forum-thread-2"}
+             "source": "mock://forum-thread-2",
+             "check": "Pull the MAF sensor and inspect the wire element for "
+                      "dirt or oil film.",
+             "cost": "$10-15 DIY (MAF cleaner spray); $150-300 if replacement is needed",
+             "difficulty": "diy-easy"}
+        ],
+        "action_plan": [
+            "Check the intake tract for cracked hoses or loose clamps between the MAF sensor and the engine (free, 15 minutes).",
+            "Clean the MAF sensor with MAF-specific cleaner spray ($10-15).",
+            "Clear the code and drive a few days; if the trims climb back up, have a shop smoke-test the intake ($80-150).",
+            "If it returns after that, ask the shop to check fuel pressure before replacing parts."
         ]
     }),
     "critique": json.dumps({
@@ -47,26 +73,60 @@ _MOCK_RESPONSES = {
 def _complete_anthropic(system: str, user: str) -> str:
     import anthropic
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-    resp = client.messages.create(
-        model=config.MODEL,
-        max_tokens=1500,
-        system=system,
-        messages=[{"role": "user", "content": user}],
-    )
+    try:
+        resp = client.messages.create(
+            model=config.MODEL,
+            max_tokens=1500,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+    except anthropic.AuthenticationError as exc:
+        raise LLMUnavailableError(
+            "The AI service rejected the configured API key. If you run this "
+            "app, check ANTHROPIC_API_KEY.") from exc
+    except anthropic.RateLimitError as exc:
+        raise LLMUnavailableError(
+            "The AI service is rate-limited right now. Wait a minute and try "
+            "again.") from exc
+    except anthropic.APIStatusError as exc:
+        raise LLMUnavailableError(
+            f"The AI service returned an error ({exc.status_code}). Try again "
+            "in a moment.") from exc
+    except anthropic.APIConnectionError as exc:
+        raise LLMUnavailableError(
+            "Could not reach the AI service. Check your connection and try "
+            "again.") from exc
     return resp.content[0].text
 
 
 def _complete_openai(system: str, user: str) -> str:
-    from openai import OpenAI
-    client = OpenAI(api_key=config.OPENAI_API_KEY)
-    resp = client.chat.completions.create(
-        model=config.OPENAI_MODEL,
-        max_tokens=1500,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-    )
+    import openai
+    client = openai.OpenAI(api_key=config.OPENAI_API_KEY)
+    try:
+        resp = client.chat.completions.create(
+            model=config.OPENAI_MODEL,
+            max_tokens=1500,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+    except openai.AuthenticationError as exc:
+        raise LLMUnavailableError(
+            "The AI service rejected the configured API key. If you run this "
+            "app, check OPENAI_API_KEY.") from exc
+    except openai.RateLimitError as exc:
+        raise LLMUnavailableError(
+            "The AI service is rate-limited right now. Wait a minute and try "
+            "again.") from exc
+    except openai.APIStatusError as exc:
+        raise LLMUnavailableError(
+            f"The AI service returned an error ({exc.status_code}). Try again "
+            "in a moment.") from exc
+    except openai.APIConnectionError as exc:
+        raise LLMUnavailableError(
+            "Could not reach the AI service. Check your connection and try "
+            "again.") from exc
     return resp.choices[0].message.content
 
 
@@ -90,4 +150,5 @@ def complete_json(system: str, user: str, tag: str = "") -> dict:
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
+        log.warning("LLM returned non-JSON for tag=%r: %.200s", tag, raw)
         return {}

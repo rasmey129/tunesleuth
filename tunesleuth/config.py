@@ -1,16 +1,34 @@
-"""Configuration for TuneSleuth. Reads API keys from environment / .env."""
+"""Configuration for TuneSleuth.
+
+Secrets resolve from the environment / .env first, then from Streamlit
+secrets (secrets.toml on Streamlit Cloud). The st.secrets fallback is
+wrapped so everything still works where streamlit isn't installed or no
+secrets file exists (e.g. the eval harness).
+"""
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-SERPER_API_KEY = os.getenv("SERPER_API_KEY", "")
+
+def _secret(name: str) -> str:
+    val = os.getenv(name, "")
+    if val:
+        return val
+    try:
+        import streamlit as st
+        return str(st.secrets.get(name, ""))
+    except Exception:
+        return ""
+
+
+ANTHROPIC_API_KEY = _secret("ANTHROPIC_API_KEY")
+OPENAI_API_KEY = _secret("OPENAI_API_KEY")
+SERPER_API_KEY = _secret("SERPER_API_KEY")
 
 # Which LLM provider to use: "anthropic" or "openai".
 # If unset, whichever API key is present decides (anthropic wins a tie).
-PROVIDER = os.getenv("LLM_PROVIDER", "").lower()
+PROVIDER = _secret("LLM_PROVIDER").lower()
 if PROVIDER not in ("anthropic", "openai"):
     PROVIDER = "anthropic" if ANTHROPIC_API_KEY else ("openai" if OPENAI_API_KEY else "")
 

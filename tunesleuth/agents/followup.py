@@ -33,8 +33,8 @@ SYSTEM = (
     "- Questions unrelated to this diagnosis (other cars, new symptoms not in "
     "the log, decisions the diagnosis doesn't settle) are out of scope: say "
     "so plainly and suggest a new datalog or a shop.\n"
-    "- If a safety warning is present, never downplay it, and repeat it when "
-    "the user asks about continuing to drive.\n"
+    "- If a safety warning or severity assessment is present, never downplay "
+    "it, and repeat it when the user asks about continuing to drive.\n"
     "- Be concise and plain-spoken. Explain jargon (LTFT, AFR, knock) simply "
     "when asked."
 )
@@ -56,12 +56,15 @@ def build_context(result: dict) -> str:
     parsed = result.get("trace", {}).get("parsed", {})
     return json.dumps({
         "vehicle": result.get("vehicle"),
+        "symptoms": result.get("symptoms"),
         "stats": parsed.get("stats", {}),
-        "obd_code": parsed.get("obd_code"),
-        "obd_meaning": parsed.get("obd_meaning"),
+        "obd_codes": parsed.get("obd_codes", []),
         "anomalies": result.get("anomalies", []),
         "diagnoses": result.get("diagnoses", []),
+        "action_plan": result.get("action_plan", []),
         "confidence": result.get("confidence"),
+        "severity": result.get("severity"),
+        "recalls": result.get("recalls", []),
         "safety_warning": result.get("safety_warning"),
         "sensor_warnings": result.get("sensor_warnings", []),
         "warmup_note": result.get("warmup_note"),

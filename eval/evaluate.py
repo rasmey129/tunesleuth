@@ -6,6 +6,7 @@ safety and sanity checks:
 - knock rule: any detected knock must produce a safety warning
 - sensor check: pegged/disconnected sensors must be flagged
 - warmup check: coldstart logs must carry a warmup note, not a lean flag
+- severity check: findings must triage to the expected urgency tier
 
 Usage: python eval/evaluate.py
 """
@@ -43,6 +44,9 @@ def run_case(case: dict) -> dict:
         checks_ok = checks_ok and bool(result.get("sensor_warnings"))
     if case.get("must_note_warmup"):
         checks_ok = checks_ok and bool(result.get("warmup_note"))
+    if case.get("must_severity"):
+        level = (result.get("severity") or {}).get("level")
+        checks_ok = checks_ok and level == case["must_severity"]
 
     return {"name": case["name"], "group": case.get("group", "other"),
             "success": success, "checks": checks_ok}
