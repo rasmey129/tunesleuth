@@ -170,30 +170,28 @@ if result is not None:
     if not result["ok"]:
         st.error(result["message"])
     else:
+        # One verdict banner, not a stack of alarm boxes. When knock fired
+        # the hard safety rule, its (more specific) text becomes the body.
         sev = result.get("severity")
-        if sev:
-            banner = f"**{sev['label']}.** {sev['advice']}"
-            if sev["level"] == "stop":
+        safety = result.get("safety_warning")
+        if sev or safety:
+            label = sev["label"] if sev else "Drive gently, fix promptly"
+            level = sev["level"] if sev else "caution"
+            body = safety or sev["advice"]
+            banner = f"**{label}.** {body}"
+            if level == "stop":
                 st.error("🛑 " + banner)
-            elif sev["level"] == "caution":
+            elif level == "caution":
                 st.warning("⚠️ " + banner)
             else:
-                st.info(("🔧 " if sev["level"] == "soon" else "ℹ️ ") + banner)
+                st.info(("🔧 " if level == "soon" else "ℹ️ ") + banner)
 
-        if result.get("safety_warning"):
-            st.error("⚠️ " + result["safety_warning"])
         for w in result.get("sensor_warnings", []):
             st.warning(w)
         if result.get("warmup_note"):
             st.info(result["warmup_note"])
         for n in result.get("notes", []):
             st.caption("ℹ️ " + n)
-
-        parsed = result["trace"]["parsed"]
-        stats = parsed.get("stats", {})
-
-        for c in parsed.get("obd_codes", []):
-            st.markdown(f"**{c['code']}** — {c['meaning']}")
 
         if result.get("recalls"):
             with st.expander(f"🚨 Open recalls reported for this vehicle "
@@ -205,33 +203,23 @@ if result is not None:
                 st.caption("Source: NHTSA. A recall matching your symptom "
                            "means a free dealer repair — call with your VIN.")
 
-        if stats:
-            metrics = [("Log rows", f"{parsed.get('rows', 0):,}")]
-            if "ltft" in stats:
-                metrics.append(("LTFT mean", f"{stats['ltft']['mean']}%"))
-            if "afr" in stats:
-                metrics.append(("AFR mean", f"{stats['afr']['mean']}"))
-            metrics.append(("Knock events", f"{stats.get('knock_events', 0)}"))
-            with st.container(border=True):
-                for col, (label, value) in zip(st.columns(len(metrics)), metrics):
-                    col.metric(label, value)
-
-        if result.get("preview") and parsed.get("rows", 0) >= 10:
-            chart = log_chart(result["preview"])
-            if chart is not None:
-                st.altair_chart(chart)
+        parsed = result["trace"]["parsed"]
+        stats = parsed.get("stats", {})
 
         if result.get("healthy"):
             st.success(result["message"])
         else:
-            st.subheader("What the log shows")
-            for a in result["anomalies"]:
-                st.write("- " + a)
+            # Owner-first order: what to do, then why, then the raw data.
+            if result.get("action_plan"):
+                st.subheader("What to do next")
+                st.caption("Cheapest way to narrow it down first.")
+                for i, step in enumerate(result["action_plan"], 1):
+                    st.write(f"{i}. {step}")
 
             st.subheader("Probable causes")
             if not result["diagnoses"]:
                 st.info("The agents couldn't build well-supported causes from "
-                        "web evidence this time — the findings above still "
+                        "web evidence this time — the findings below still "
                         "stand. Try Diagnose again, or add your vehicle "
                         "details for more specific research.")
             else:
@@ -253,15 +241,27 @@ if result is not None:
                         st.write(f"**Difficulty:** {labels.get(d['difficulty'], d['difficulty'])}")
                     if d.get("source"):
                         st.write(f"Source: {d['source']}")
-
-            if result.get("action_plan"):
-                st.subheader("What to do next")
-                st.caption("Cheapest way to narrow it down first.")
-                for i, step in enumerate(result["action_plan"], 1):
-                    st.write(f"{i}. {step}")
-
             if result.get("critic_notes"):
                 st.caption(f"Critic notes: {result['critic_notes']}")
+
+            st.subheader("What the log shows")
+            for a in result["anomalies"]:
+                st.write("- " + a)
+
+        if stats:
+            with st.expander(f"📈 Log details ({parsed.get('rows', 0):,} rows)"):
+                metrics = [("Log rows", f"{parsed.get('rows', 0):,}")]
+                if "ltft" in stats:
+                    metrics.append(("LTFT mean", f"{stats['ltft']['mean']}%"))
+                if "afr" in stats:
+                    metrics.append(("AFR mean", f"{stats['afr']['mean']}"))
+                metrics.append(("Knock events", f"{stats.get('knock_events', 0)}"))
+                for col, (label, value) in zip(st.columns(len(metrics)), metrics):
+                    col.metric(label, value)
+                if result.get("preview") and parsed.get("rows", 0) >= 10:
+                    chart = log_chart(result["preview"])
+                    if chart is not None:
+                        st.altair_chart(chart)
 
         with st.expander("Full agent trace"):
             st.json(result["trace"])
