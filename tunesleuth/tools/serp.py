@@ -33,8 +33,11 @@ def search(query: str, num: int = 5) -> list[dict]:
         timeout=15,
     )
     if not resp.ok:
+        key = config.SERPER_API_KEY
+        fingerprint = f"len={len(key)} tail=...{key[-4:]}" if key else "EMPTY"
         raise requests.HTTPError(
-            f"{resp.status_code} {resp.reason} from Serper: {resp.text[:300]}", response=resp)
+            f"{resp.status_code} {resp.reason} from Serper: {resp.text[:300]} "
+            f"(key used: {fingerprint})", response=resp)
     organic = resp.json().get("organic", [])
     results = [{"title": r.get("title", ""), "link": r.get("link", ""),
                 "snippet": r.get("snippet", "")} for r in organic[:num]]
