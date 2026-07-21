@@ -32,7 +32,9 @@ def search(query: str, num: int = 5) -> list[dict]:
         json={"q": query, "num": num},
         timeout=15,
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        raise requests.HTTPError(
+            f"{resp.status_code} {resp.reason} from Serper: {resp.text[:300]}", response=resp)
     organic = resp.json().get("organic", [])
     results = [{"title": r.get("title", ""), "link": r.get("link", ""),
                 "snippet": r.get("snippet", "")} for r in organic[:num]]
