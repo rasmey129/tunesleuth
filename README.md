@@ -9,9 +9,6 @@ against the log or a cited source. A follow-up chat answers questions
 about the diagnosis and can look up whether other owners have seen the
 same issue on your car.
 
-Built for CIS 8045 (Agentic AI), Summer 2026. Not professional mechanical
-advice: verify before wrenching. Logs are processed in memory and never
-stored.
 
 ## How it works
 
